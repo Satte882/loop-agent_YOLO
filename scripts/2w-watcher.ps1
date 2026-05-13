@@ -1036,7 +1036,13 @@ try {
         }
 
         while ($true) {
-            Invoke-2WWatcherOnce -DryRun:$DryRun -SkipReviewer:$SkipReviewer -SkipHealthCheck:$true
+            try {
+                Invoke-2WWatcherOnce -DryRun:$DryRun -SkipReviewer:$SkipReviewer -SkipHealthCheck:$true
+            }
+            catch {
+                Write-Journal 'ERROR' ("Poll-Durchlauf fehlgeschlagen: {0}" -f $_.Exception.Message)
+                Write-Journal 'WARN' 'Setze Poll-Loop nach Fehler fort.'
+            }
             Write-Journal 'INFO' ("Warte {0}s bis zum naechsten Poll-Durchlauf." -f $IntervalSeconds)
             Start-Sleep -Seconds $IntervalSeconds
         }

@@ -99,3 +99,31 @@ jobs:
             echo "Personal local path must not be documented as a generic requirement" >&2
             exit 1
           fi
+
+      - name: Check PowerShell syntax in scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hasErrors = $false
+          $psFiles = @(Get-ChildItem -Path scripts -Filter '*.ps1')
+          foreach ($file in $psFiles) {
+            try {
+              $null = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$null)
+              Write-Host "  OK: $($file.Name)"
+            }
+            catch {
+              Write-Host "  FAIL: $($file.Name) - $($_.Exception.Message)"
+              $hasErrors = $true
+            }
+          }
+          if ($hasErrors) { exit 1 }
+
+      - name: Check new helper files exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f CHANGELOG.md
+          test -f scripts/start-watcher.ps1
+          test -f scripts/stop-watcher.ps1
+          test -f .githooks/pre-commit
+          test -f .2w/README.md

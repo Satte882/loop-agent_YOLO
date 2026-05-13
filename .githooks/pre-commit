@@ -1,0 +1,38 @@
+#!/usr/bin/env pwsh
+<#
+.SYNOPSIS
+    Pre-commit hook: Prüft PowerShell-Syntax in scripts/*.ps1.
+    Verhindert Commit bei Syntaxfehlern.
+#>
+
+$ErrorActionPreference = 'Stop'
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+$scriptsDir = Join-Path $RepoRoot 'scripts'
+
+Write-Host "[PRE-COMMIT] Checking PowerShell syntax..."
+
+$hasErrors = $false
+$psFiles = Get-ChildItem -Path $scriptsDir -Filter '*.ps1' -ErrorAction SilentlyContinue
+
+foreach ($file in $psFiles) {
+    try {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+            $file.FullName,
+            [ref]$null,
+            [ref]$null
+        )
+        Write-Host "[PRE-COMMIT]   OK: $($file.Name)"
+    }
+    catch {
+        Write-Host "[PRE-COMMIT]   FAIL: $($file.Name) - $($_.Exception.Message)"
+        $hasErrors = $true
+    }
+}
+
+if ($hasErrors) {
+    Write-Host "[PRE-COMMIT] BLOCKED: PowerShell syntax errors found. Fix before commit."
+    exit 1
+}
+
+Write-Host "[PRE-COMMIT] All scripts passed syntax check."
+exit 0
