@@ -100,8 +100,6 @@ jobs:
             exit 1
           fi
 
-      - name: Install PowerShell
-        uses: actions/setup-powershell@v1
 
       - name: Check PowerShell syntax in scripts
         shell: pwsh
