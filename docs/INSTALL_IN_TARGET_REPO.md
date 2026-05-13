@@ -2,7 +2,7 @@
 
 ## Ziel
 
-`loop-agent` soll als kleines Starterkit in beliebigen Zielrepos nutzbar sein.
+`loop-agent_YOLO` soll als kleines Starterkit in beliebigen Zielrepos nutzbar sein.
 
 ## Zielbild
 

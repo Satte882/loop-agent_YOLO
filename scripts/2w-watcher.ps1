@@ -1,11 +1,13 @@
 param(
-    [string]$Repo = 'Satte882/loop-agent',
+    [string]$Repo = 'Satte882/loop-agent_YOLO',
     [ValidateSet('OneShot', 'Poll')]
     [string]$Mode = 'OneShot',
     [int]$IntervalSeconds = 60,
     [int]$MaxIssuesPerRun = 1,
+    [int]$CodexTimeoutSeconds = 300,
     [switch]$DryRun,
-    [switch]$SkipReviewer
+    [switch]$SkipReviewer,
+    [switch]$SkipHealthCheck
 )
 
 Set-StrictMode -Version Latest
@@ -16,14 +18,85 @@ $RepoRoot = Resolve-Path (Join-Path $ScriptRoot '..') | Select-Object -ExpandPro
 $ArtifactRoot = Join-Path $RepoRoot '.2w'
 $PromptPath = Join-Path $ArtifactRoot 'watcher_review_prompt.md'
 $ResultPath = Join-Path $ArtifactRoot 'watcher_review_result.md'
+$LockPath = Join-Path $ArtifactRoot 'watcher.lock'
+$JournalPath = Join-Path $ArtifactRoot 'watcher.journal'
+$JournalMaxLines = 500
 
-function Write-Log {
+# ─── Journal ────────────────────────────────────────────────────────────
+
+function Write-Journal {
     param(
         [string]$Level,
-        [string]$Message
+        [string]$Message,
+        [string]$IssueId = ''
     )
 
-    Write-Host ("[2W:{0}] {1}" -f $Level, $Message)
+    $timestamp = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')
+    $line = "[$timestamp] [$Level]"
+    if ($IssueId) { $line += " [#$IssueId]" }
+    $line += " $Message"
+
+    Write-Host $line
+
+    try {
+        New-Item -ItemType Directory -Force -Path $ArtifactRoot | Out-Null
+        Add-Content -LiteralPath $JournalPath -Value $line -Encoding UTF8
+
+        # Rotation: keep only last $JournalMaxLines
+        $lineCount = (Get-Content -LiteralPath $JournalPath -ReadCount 0 | Measure-Object).Count
+        if ($lineCount -gt $JournalMaxLines * 2) {
+            $content = Get-Content -LiteralPath $JournalPath -ReadCount 0
+            $content[-$JournalMaxLines..-1] | Set-Content -LiteralPath $JournalPath -Encoding UTF8
+        }
+    }
+    catch {
+        Write-Host "[JOURNAL_WARN] Could not write journal: $($_.Exception.Message)"
+    }
+}
+
+# ─── Lock ───────────────────────────────────────────────────────────────
+
+function Acquire-Lock {
+    try {
+        if (Test-Path -LiteralPath $LockPath) {
+            $lockContent = Get-Content -LiteralPath $LockPath -Raw -ErrorAction Stop
+            $lockPid = $lockContent.Trim()
+            if ($lockPid -and (Get-Process -Id ([int]$lockPid) -ErrorAction SilentlyContinue)) {
+                Write-Journal 'WARN' "Lock held by PID $lockPid. Skipping run."
+                return $false
+            }
+            Write-Journal 'WARN' "Stale lock from PID $lockPid found. Releasing."
+            Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
+        }
+        [System.IO.File]::WriteAllText($LockPath, [string]$PID)
+        return $true
+    }
+    catch {
+        Write-Journal 'WARN' "Could not acquire lock: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Release-Lock {
+    try {
+        if (Test-Path -LiteralPath $LockPath) {
+            $lockContent = Get-Content -LiteralPath $LockPath -Raw -ErrorAction SilentlyContinue
+            if ($lockContent.Trim() -eq [string]$PID) {
+                Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
+                Write-Journal 'INFO' 'Lock released.'
+            }
+        }
+    }
+    catch {
+        Write-Journal 'WARN' "Could not release lock: $($_.Exception.Message)"
+    }
+}
+
+# ─── Helpers ────────────────────────────────────────────────────────────
+
+function Write-Log {
+    param([string]$Level, [string]$Message)
+    Write-Journal -Level $Level -Message $Message
 }
 
 function Invoke-NativeCommand {
@@ -31,7 +104,8 @@ function Invoke-NativeCommand {
         [Parameter(Mandatory = $true)]
         [string]$FileName,
         [string[]]$Arguments = @(),
-        [string]$InputText
+        [string]$InputText,
+        [int]$TimeoutSeconds = 0
     )
 
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
@@ -55,9 +129,19 @@ function Invoke-NativeCommand {
         $process.StandardInput.Close()
     }
 
+    if ($TimeoutSeconds -gt 0) {
+        $completed = $process.WaitForExit($TimeoutSeconds * 1000)
+        if (-not $completed) {
+            $process.Kill()
+            throw "Command timed out after ${TimeoutSeconds}s: $FileName $($Arguments -join ' ')"
+        }
+    }
+    else {
+        $process.WaitForExit()
+    }
+
     $stdout = $process.StandardOutput.ReadToEnd()
     $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
 
     if ($process.ExitCode -ne 0) {
         throw @"
@@ -152,6 +236,75 @@ function Assert-Prerequisites {
     Invoke-NativeCommand -FileName 'gh' -Arguments @('--version') | Out-Null
     Invoke-NativeCommand -FileName 'gh' -Arguments @('auth', 'status') | Out-Null
     Invoke-NativeCommand -FileName 'codex' -Arguments @('--version') | Out-Null
+}
+
+function Test-Health {
+    param(
+        [switch]$Quick
+    )
+
+    try {
+        $healthErrors = @()
+
+        # 1. gh auth status
+        try {
+            Invoke-NativeCommand -FileName 'gh' -Arguments @('auth', 'status') | Out-Null
+            Write-Journal 'INFO' 'Health: gh auth OK.'
+        }
+        catch {
+            $healthErrors += "gh auth status failed: $($_.Exception.Message)"
+        }
+
+        # 2. codex --version
+        try {
+            Invoke-NativeCommand -FileName 'codex' -Arguments @('--version') | Out-Null
+            Write-Journal 'INFO' 'Health: codex version OK.'
+        }
+        catch {
+            $healthErrors += "codex --version failed: $($_.Exception.Message)"
+        }
+
+        # 3. GitHub API repo access
+        try {
+            Invoke-GhJson -Arguments @('api', "repos/$Repo") | Out-Null
+            Write-Journal 'INFO' "Health: repo $Repo accessible via gh API."
+        }
+        catch {
+            $healthErrors += "GitHub API access to $Repo failed: $($_.Exception.Message)"
+        }
+
+        # 4. 2W labels exist (quick check)
+        if (-not $Quick) {
+            try {
+                $labels = Invoke-GhJson -Arguments @('api', "repos/$Repo/labels?per_page=100")
+                $labelNames = @($labels | ForEach-Object { $_.name })
+                $requiredLabels = @('2w:ready', '2w:running', '2w:done', '2w:failed', '2w:reviewed', '2w:complete')
+                $missingLabels = $requiredLabels | Where-Object { $_ -notin $labelNames }
+                if ($missingLabels.Count -gt 0) {
+                    Write-Journal 'WARN' "Health: Missing labels: $($missingLabels -join ', ')"
+                    $healthErrors += "Missing 2W labels: $($missingLabels -join ', ')"
+                }
+                else {
+                    Write-Journal 'INFO' 'Health: All 2W labels present.'
+                }
+            }
+            catch {
+                Write-Journal 'WARN' "Health: Could not verify labels: $($_.Exception.Message)"
+            }
+        }
+
+        if ($healthErrors.Count -gt 0) {
+            Write-Journal 'ERROR' "Health check FAILED:`n$($healthErrors -join "`n")"
+            return $false
+        }
+
+        Write-Journal 'INFO' 'Health check PASSED.'
+        return $true
+    }
+    catch {
+        Write-Journal 'ERROR' "Health check exception: $($_.Exception.Message)"
+        return $false
+    }
 }
 
 function Get-LabelNames {
@@ -459,11 +612,12 @@ function Invoke-CodexReviewer {
             '--skip-git-repo-check',
             '--output-last-message', $ResultPath,
             '-'
-        ) -InputText $PromptText
+        ) -InputText $PromptText -TimeoutSeconds $CodexTimeoutSeconds
 
         $reviewText = if (Test-Path -LiteralPath $ResultPath) {
             Get-Content -LiteralPath $ResultPath -Raw
-        } else {
+        }
+        else {
             $result.StdOut
         }
 
@@ -821,10 +975,21 @@ function Process-OneIssue {
 function Invoke-2WWatcherOnce {
     param(
         [switch]$DryRun,
-        [switch]$SkipReviewer
+        [switch]$SkipReviewer,
+        [switch]$SkipHealthCheck
     )
 
     Assert-Prerequisites
+
+    if (-not $SkipHealthCheck) {
+        Write-Log 'INFO' 'Fuehre Health-Check vor Poll-Schleife aus.'
+        $healthOk = Test-Health -Quick
+        if (-not $healthOk) {
+            Write-Log 'ERROR' 'Health-Check fehlgeschlagen. Breche ab.'
+            return
+        }
+        Write-Log 'INFO' 'Health-Check erfolgreich.'
+    }
 
     $eligibleIssues = Get-2WDoneIssues -RepoName $Repo
     if ($eligibleIssues.Count -eq 0) {
@@ -845,20 +1010,46 @@ function Invoke-2WWatcherOnce {
     }
 }
 
+# ─── Main ───────────────────────────────────────────────────────────
+
 try {
     Push-Location $RepoRoot
 
+    $lockAcquired = Acquire-Lock
+    if (-not $lockAcquired) {
+        Write-Journal 'WARN' 'Watcher already running (lock held). Exiting.'
+        exit 0
+    }
+
+    Write-Journal 'INFO' "Watcher started (Repo=$Repo Mode=$Mode PID=$PID)"
+
     if ($Mode -eq 'Poll') {
-        Write-Log 'INFO' ("Starte Poll-Modus mit Intervall {0}s." -f $IntervalSeconds)
+        Write-Journal 'INFO' ("Starte Poll-Modus mit Intervall {0}s. Codex-Timeout: {1}s." -f $IntervalSeconds, $CodexTimeoutSeconds)
+
+        # Full health check before entering poll loop
+        if (-not $SkipHealthCheck) {
+            $initialHealth = Test-Health
+            if (-not $initialHealth) {
+                Write-Journal 'ERROR' 'Initialer Health-Check fehlgeschlagen. Beende Poll-Loop.'
+                exit 1
+            }
+        }
+
         while ($true) {
-            Invoke-2WWatcherOnce -DryRun:$DryRun -SkipReviewer:$SkipReviewer
+            Invoke-2WWatcherOnce -DryRun:$DryRun -SkipReviewer:$SkipReviewer -SkipHealthCheck:$true
+            Write-Journal 'INFO' ("Warte {0}s bis zum naechsten Poll-Durchlauf." -f $IntervalSeconds)
             Start-Sleep -Seconds $IntervalSeconds
         }
     }
     else {
-        Invoke-2WWatcherOnce -DryRun:$DryRun -SkipReviewer:$SkipReviewer
+        Invoke-2WWatcherOnce -DryRun:$DryRun -SkipReviewer:$SkipReviewer -SkipHealthCheck:$SkipHealthCheck
     }
 }
+catch {
+    Write-Journal 'ERROR' "Unbehandelter Fehler: $($_.Exception.Message)"
+    throw
+}
 finally {
+    Release-Lock
     Pop-Location
 }

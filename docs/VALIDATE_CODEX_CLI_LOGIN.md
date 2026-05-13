@@ -15,7 +15,7 @@ Vor dem ersten 2W-Lauf muss lokal geprüft werden, ob `codex exec` im self-hoste
 
 ## Minimaler Funktionstest
 
-Der erste Test sollte kein Produktivrepo verändern. Geeignet ist ein kleines Test-Issue in `loop-agent`, das nur eine Markdown-Zeile ergänzt oder eine neue Testdatei in `docs/` erzeugt.
+Der erste Test sollte kein Produktivrepo verändern. Geeignet ist ein kleines Test-Issue in `loop-agent_YOLO`, das nur eine Markdown-Zeile ergänzt oder eine neue Testdatei in `docs/` erzeugt.
 
 ## Erwartetes Ergebnis
 

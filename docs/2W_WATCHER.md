@@ -78,7 +78,7 @@ Wenn Commit-SHA, Diff, Issue-Kommentar oder Codex-Reviewer-Antwort nicht eindeut
 
 ## 1. Zielrepo prüfen
 
-Der Watcher prüft ein konfiguriertes GitHub-Repository, zunächst `Satte882/loop-agent`.
+Der Watcher prüft ein konfiguriertes GitHub-Repository, zunächst `Satte882/loop-agent_YOLO`.
 
 Er sucht nach offenen Issues mit Label `2w:done`, die noch nicht als `2w:reviewed` markiert sind.
 
@@ -268,19 +268,25 @@ Voraussetzungen:
 One-shot:
 
 ```powershell
-.\scripts\2w-watcher.ps1 -Repo "Satte882/loop-agent" -Mode OneShot
+.\scripts\2w-watcher.ps1 -Repo "Satte882/loop-agent_YOLO" -Mode OneShot
 ```
 
 DryRun:
 
 ```powershell
-.\scripts\2w-watcher.ps1 -Repo "Satte882/loop-agent" -Mode OneShot -DryRun
+.\scripts\2w-watcher.ps1 -Repo "Satte882/loop-agent_YOLO" -Mode OneShot -DryRun
 ```
 
 Polling:
 
 ```powershell
-.\scripts\2w-watcher.ps1 -Repo "Satte882/loop-agent" -Mode Poll -IntervalSeconds 60
+.\scripts\2w-watcher.ps1 -Repo "Satte882/loop-agent_YOLO" -Mode Poll -IntervalSeconds 60
+```
+
+Beenden des Watchers (Poll-Modus):
+
+```powershell
+.\scripts\stop-watcher.ps1
 ```
 
 Hinweise:

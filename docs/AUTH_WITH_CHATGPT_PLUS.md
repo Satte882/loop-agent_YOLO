@@ -2,11 +2,11 @@
 
 ## Ziel
 
-Der Standardpfad von `loop-agent` soll keinen `OPENAI_API_KEY` benötigen.
+Der Standardpfad von `loop-agent_YOLO` soll keinen `OPENAI_API_KEY` benötigen.
 
 ## Modell
 
-`loop-agent` ruft lokal `codex exec` auf einem self-hosted Runner auf. Die Authentifizierung liegt vollständig bei der lokal installierten Codex CLI.
+`loop-agent_YOLO` ruft lokal `codex exec` auf einem self-hosted Runner auf. Die Authentifizierung liegt vollständig bei der lokal installierten Codex CLI.
 
 ## Wichtig
 

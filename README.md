@@ -1,6 +1,6 @@
-# loop-agent
+# loop-agent_YOLO
 
-`loop-agent` ist ein portables 2W-Starterkit für eine einfache ChatGPT ↔ GitHub Issues ↔ lokale Codex-CLI-Rückkopplung.
+`loop-agent_YOLO` ist ein portables 2W-Starterkit für eine einfache ChatGPT ↔ GitHub Issues ↔ lokale Codex-CLI-Rückkopplung — jetzt im dedizierten YOLO-Modus-Repo.
 
 ## Aktueller Validierungsstand
 
@@ -36,9 +36,9 @@ ChatGPT liest anschließend den Issue-Kommentar, den Commit und den Diff über G
 
 ## Aktuelle Nähe zum Zielbild
 
-Der GitHub-seitige Kern ist vorbereitet und validiert: Workflow, Issue-Template, portable Templates, Smoke-CI und Dokumentation sind vorhanden. Der Standardpfad nutzt lokale Codex CLI und verlangt keinen `OPENAI_API_KEY`.
+Der GitHub-seitige Kern ist vorbereitet und validiert: Workflow, Issue-Template, portable Templates, Smoke-CI, Watcher und Dokumentation sind vorhanden. Der Standardpfad nutzt lokale Codex CLI und verlangt keinen `OPENAI_API_KEY`.
 
-Noch nicht bewiesen ist der wichtigste praktische Punkt: Ob `codex exec` im Kontext des self-hosted Runners mit dem lokalen Login ohne interaktive Anmeldung funktioniert. Ebenfalls noch nicht vollständig gelöst ist ein echter automatischer Trigger zurück in dieses offene ChatGPT-Fenster. Der belastbare Rückkanal ist aktuell GitHub: Issue-Kommentar, Commit-SHA und Diff.
+Noch nicht bewiesen ist der wichtigste praktische Punkt: Ob `codex exec` im Kontext des self-hosted Runners mit dem lokalen Login ohne interaktive Anmeldung funktioniert. Ebenfalls noch nicht vollständig gelöst ist ein echter automatischer Trigger zurück in dieses offene ChatGPT-Fenster. Der belastbare Rückkanal ist aktuell GitHub: Issue-Kommentar, Commit-SHA und Diff — ergänzt durch den lokalen 2W Watcher.
 
 ## Wichtige Entscheidung
 
@@ -56,6 +56,25 @@ Stattdessen muss Codex CLI lokal auf dem self-hosted Runner verfügbar und berei
 - Kein Remote-Server.
 - Keine 0Admin-Produktlogik.
 
+## Quickstart (5 Minuten)
+
+```powershell
+# 1. Repository klonen
+git clone https://github.com/Satte882/loop-agent_YOLO.git
+cd loop-agent_YOLO
+
+# 2. Voraussetzungen prüfen
+.\scripts\2w-watcher.ps1 -Repo "Satte882/loop-agent_YOLO" -Mode OneShot -DryRun
+
+# 3. Watcher im Poll-Modus starten (eigenes Terminal)
+.\scripts\start-watcher.ps1 -Repo "Satte882/loop-agent_YOLO"
+
+# 4. Watcher beenden
+.\scripts\stop-watcher.ps1
+```
+
+Weitere Details in `docs/LOCAL_SETUP.md` und `docs/2W_WATCHER.md`.
+
 ## Kern-Dateien
 
 | Datei | Zweck |
@@ -65,6 +84,9 @@ Stattdessen muss Codex CLI lokal auf dem self-hosted Runner verfügbar und berei
 | `.github/ISSUE_TEMPLATE/2w-workblock.yml` | Issue-Vorlage für 2W-Arbeitsblöcke |
 | `templates/2w-local-codex.yml` | Portabler Workflow für andere Repos |
 | `templates/ISSUE_TEMPLATE/2w-workblock.yml` | Portables Issue-Template für andere Repos |
+| `scripts/2w-watcher.ps1` | Lokaler Callback-Loop nach `2W_DONE` |
+| `scripts/start-watcher.ps1` | Watcher-Starthelfer (Task-Scheduler-kompatibel) |
+| `scripts/stop-watcher.ps1` | Watcher-Stophelfer |
 | `docs/INSTALL_IN_TARGET_REPO.md` | Installation in beliebigen Zielrepos |
 | `docs/AUTH_WITH_CHATGPT_PLUS.md` | Authentifizierungsmodell ohne API-Key im Standardpfad |
 | `docs/VALIDATE_CODEX_CLI_LOGIN.md` | Lokale Login-/CLI-Validierung |
